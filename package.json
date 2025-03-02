@@ -1,0 +1,32 @@
+{
+  "name": "vuesch-dl",
+  "version": "1.0.0",
+  "description": "Vue School course downloader tool",
+  "main": "src/index.js",
+  "type": "module",
+  "bin": {
+    "vuesch-dl": "src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node src/index.js"
+  },
+  "keywords": [
+    "vue",
+    "vueschool",
+    "downloader",
+    "courses",
+    "video"
+  ],
+  "author": "Eoligan",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^13.1.0",
+    "execa": "^9.5.2",
+    "puppeteer": "^24.3.0",
+    "yt-dlp-exec": "^1.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
