@@ -201,11 +201,11 @@ export default class Scraper {
     console.log(`Output directory: ${courseDir}`);
     
     // Use the lessonsToDownload array if it exists, otherwise download all
-    const indicesToDownload = this.lessonsToDownload || 
+    const indexesToDownload = this.lessonsToDownload || 
                             Array.from({ length: courseData.videos.length }, (_, i) => i);
     
     // Download only the specified lessons
-    for (const index of indicesToDownload) {
+    for (const index of indexesToDownload) {
         const video = courseData.videos[index];
         const videoNumber = String(index + 1).padStart(2, '0');
         const videoTitle = video.title.replace(/[/\\?%*:|"<>]/g, '-');
@@ -246,25 +246,19 @@ export default class Scraper {
       // Navegar a la página del video para obtener cookies actualizadas
       await this.page.goto(videoUrl, {waitUntil: 'networkidle0'});
       
-      // Check if video elements already exist before waiting
-      const videoElementsExist = await this.page.evaluate(() => {
-        return document.querySelector('iframe[src*="player.vimeo.com"]') !== null || 
-               document.querySelector('video') !== null ||
-               document.querySelector('source') !== null ||
-               document.querySelector('[class*="play"]') !== null;
+      // Esperar a que aparezca el iframe de Vimeo
+      const iframeExists = await this.page.evaluate(() => {
+        return document.querySelector('iframe[src*="player.vimeo.com"]') !== null;
       });
       
-      // Only wait if elements don't already exist
-      if (!videoElementsExist) {
+      // Solo esperar si el iframe no existe todavía
+      if (!iframeExists) {
         await this.page.waitForFunction(() => {
-          return document.querySelector('iframe[src*="player.vimeo.com"]') !== null || 
-                 document.querySelector('video') !== null ||
-                 document.querySelector('source') !== null ||
-                 document.querySelector('[class*="play"]') !== null;
+          return document.querySelector('iframe[src*="player.vimeo.com"]') !== null;
         }, { timeout: 3000, polling: 50 });
       }
       
-      // Extraer la URL directa del video usando JavaScript en la página
+      // Extraer la URL del iframe de Vimeo
       const videoData = await this.page.evaluate(() => {
         // Buscar iframe de Vimeo
         const vimeoIframe = document.querySelector('iframe[src*="player.vimeo.com"]');
@@ -276,21 +270,6 @@ export default class Scraper {
             height: vimeoIframe.height
           };
         }
-        
-        // Resto del código de detección existente
-        const videoElement = document.querySelector('video');
-        if (videoElement && videoElement.src) {
-          return { type: 'video_element', url: videoElement.src };
-        }
-        
-        const sources = document.querySelectorAll('source');
-        if (sources.length > 0) {
-          const sourceUrls = Array.from(sources).map(s => s.src).filter(Boolean);
-          if (sourceUrls.length > 0) {
-            return { type: 'video_sources', urls: sourceUrls };
-          }
-        }
-        
         return null;
       });
       
@@ -300,12 +279,6 @@ export default class Scraper {
         const vimeoId = vimeoIdMatch ? vimeoIdMatch[1] : null;
         
         if (vimeoId) {
-          // Obtener cookies como string para pasar como header
-          const cookies = await this.page.cookies();
-          const cookieHeader = cookies
-            .map(cookie => `${cookie.name}=${cookie.value}`)
-            .join('; ');
-          
           // URL completa de Vimeo para usar en los intentos
           const vimeoUrl = `https://player.vimeo.com/video/${vimeoId}`;
           
@@ -388,7 +361,6 @@ export default class Scraper {
                 }
               }
               
-              // Si es el último intento, continuar con los métodos alternativos
               if (attempt === maxRetries) {
                 console.log('Agotados los reintentos con el método principal');
               } else {
@@ -396,101 +368,11 @@ export default class Scraper {
               }
             }
           }
-          
-          // Intentar con formato específico
-          try {
-            console.log('Intentando con formato específico (720p)...');
-            const formatOptions = [
-              // Intenta 720p+audio o la mejor calidad disponible hasta 720p
-              '--format', '136+140/[height<=720]',
-              '--merge-output-format', 'mp4',
-              '--referer', videoUrl,
-              '--add-header', `Referer: ${videoUrl}`,
-              '--user-agent', await this.page.evaluate(() => navigator.userAgent),
-              '-o', outputPath
-            ];
-            await execa(ytdlpPath, [...formatOptions, vimeoUrl]);
-            console.log(`✓ Video descargado con formato específico: ${path.basename(outputPath)}`);
-            return;
-          } catch (formatError) {
-            console.error(`Error con formato específico: ${formatError.message}`);
-            
-            // Intentar con la URL directa de Vimeo
-            try {
-              console.log('Intentando con URL directa de Vimeo (720p)...');
-              const directVimeoUrl = `https://vimeo.com/${vimeoId}`;
-              await execa(ytdlpPath, [
-                '--format', 'bestvideo[height<=720]+bestaudio/best[height<=720]',
-                '--merge-output-format', 'mp4',
-                '--referer', videoUrl,
-                '-o', outputPath,
-                directVimeoUrl
-              ]);
-              console.log(`✓ Video descargado con URL directa: ${path.basename(outputPath)}`);
-              return;
-            } catch (directError) {
-              console.error(`Error con URL directa: ${directError.message}`);
-            }
-          }
         }
       }
       
-      // Intentar métodos alternativos para otros tipos de videos
-      console.log('Intentando métodos alternativos...');
-      
-      // Intentar hacer clic en el botón de reproducción si existe
-      try {
-        await this.page.click('[class*="play"]');
-        
-        // Check if video source already exists before waiting
-        const videoSrcExists = await this.page.evaluate(() => {
-          const videos = document.querySelectorAll('video');
-          for (const video of videos) {
-            if (video.src) return true;
-          }
-          return false;
-        });
-        
-        // Only wait if video source doesn't already exist
-        if (!videoSrcExists) {
-          await this.page.waitForFunction(() => {
-            const videos = document.querySelectorAll('video');
-            for (const video of videos) {
-              if (video.src) return true;
-            }
-            return false;
-          }, { timeout: 1500, polling: 50 });
-        }
-        
-        // Intentar encontrar el video después de hacer clic
-        const videoSrcAfterClick = await this.page.evaluate(() => {
-          const videos = Array.from(document.querySelectorAll('video'));
-          for (const video of videos) {
-            if (video.src) return video.src;
-          }
-          return null;
-        });
-        
-        if (videoSrcAfterClick) {
-          try {
-            console.log('Descargando después de hacer clic en reproducir...');
-            await execa(ytdlpPath, [
-              '--format', 'bestvideo[height<=720]+bestaudio/best[height<=720]',
-              '-o', outputPath, 
-              videoSrcAfterClick
-            ]);
-            console.log(`✓ Video descargado: ${path.basename(outputPath)}`);
-            return;
-          } catch (clickError) {
-            console.error(`Error al descargar después de clic: ${clickError.message}`);
-          }
-        }
-      } catch (clickAttemptError) {
-        console.log('No se pudo hacer clic en el botón de reproducción');
-      }
-      
-      // Si todo lo anterior falla, registrar el error pero no crear archivo
-      console.log(`❌ Todos los métodos de descarga fallaron para: ${videoUrl}`);
+      // Si no se encontró iframe de Vimeo o falló la descarga
+      console.log(`❌ No se pudo descargar el video: ${videoUrl}`);
       
     } catch (error) {
       console.error(`Error al descargar video: ${error.message}`);
