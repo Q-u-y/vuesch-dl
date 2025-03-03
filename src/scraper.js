@@ -203,6 +203,14 @@ export default class Scraper {
                     const linkElement =
                         item.tagName === "A" ? item : item.querySelector("a");
 
+                    // Get a meaningful title or use lesson number as fallback
+                    let title = titleElement.innerText.trim();
+
+                    // If title is empty or just contains "lesson" with a number, enhance it
+                    if (!title || /^lesson\s+\d+$/i.test(title)) {
+                        title = `Lesson ${index + 1}`;
+                    }
+
                     // Try to find duration
                     const durationElement =
                         item.querySelector('[class*="duration"]') ||
@@ -210,9 +218,7 @@ export default class Scraper {
                         item.querySelector("small");
 
                     return {
-                        title:
-                            titleElement.innerText.trim() ||
-                            `Lesson ${index + 1}`,
+                        title: title,
                         url: linkElement?.href || "",
                         duration: durationElement?.innerText.trim() || "",
                     };
@@ -250,8 +256,16 @@ export default class Scraper {
         // Download only the specified lessons
         for (const index of indexesToDownload) {
             const video = courseData.videos[index];
+            if (!video) continue; // Skip if video doesn't exist
+
             const videoNumber = String(index + 1).padStart(2, "0");
-            const videoTitle = video.title.replace(/[/\\?%*:|"<>]/g, "-");
+            let videoTitle = video.title.replace(/[/\\?%*:|"<>]/g, "-");
+
+            // Ensure the title doesn't start with just "Lesson ##" which can cause duplicate downloads
+            if (/^Lesson\s+\d+$/i.test(videoTitle)) {
+                videoTitle = `${videoTitle} - ${courseData.title}`;
+            }
+
             const outputPath = path.join(
                 courseDir,
                 `${videoNumber}-${videoTitle}.mp4`
@@ -263,6 +277,28 @@ export default class Scraper {
                 }`
             );
             console.log(`URL: ${video.url}`);
+
+            // Check if any file with this lesson number already exists
+            const lessonPrefix = `${videoNumber}-`;
+            try {
+                const files = await fs.readdir(courseDir);
+                const existingFile = files.find(
+                    (file) =>
+                        file.startsWith(lessonPrefix) && file.endsWith(".mp4")
+                );
+
+                if (existingFile) {
+                    console.log(
+                        `File for lesson ${
+                            index + 1
+                        } already exists: ${existingFile}, skipping`
+                    );
+                    continue;
+                }
+            } catch (err) {
+                // Directory might not exist yet, which is fine
+            }
+
             await this.downloadVideo(video.url, outputPath);
         }
 
