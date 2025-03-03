@@ -339,17 +339,17 @@ export default class Scraper {
             });
 
             if (videoData && videoData.type === "vimeo_iframe") {
-                // Extraer el ID de Vimeo de la URL del iframe
+                // Extract the Vimeo ID from the iframe URL
                 const vimeoIdMatch = videoData.url.match(/video\/(\d+)/);
                 const vimeoId = vimeoIdMatch ? vimeoIdMatch[1] : null;
 
                 if (vimeoId) {
-                    // URL completa de Vimeo para usar en los intentos
+                    // Complete Vimeo URL to use in attempts
                     const vimeoUrl = `https://player.vimeo.com/video/${vimeoId}`;
 
-                    // Usar yt-dlp con opciones específicas para Vimeo - limitado a 720p
+                    // Use yt-dlp with specific options for Vimeo - limited to 720p
                     const options = [
-                        // Seleccionar video 720p y mejor audio disponible
+                        // Select 720p video and best available audio
                         //'--format', 'bestvideo[height<=720]+bestaudio/best[height<=720]',
                         "--merge-output-format",
                         "mp4",
@@ -363,12 +363,12 @@ export default class Scraper {
                         outputPath,
                     ];
 
-                    // Implementar mecanismo de reintento para el método principal
+                    // Implement retry mechanism for the main method
                     const maxRetries = 3;
                     for (let attempt = 1; attempt <= maxRetries; attempt++) {
                         try {
                             console.log(
-                                `Intentando descargar desde Vimeo (intento ${attempt}/${maxRetries}): ${vimeoUrl}`
+                                `Attempting to download from Vimeo (attempt ${attempt}/${maxRetries}): ${vimeoUrl}`
                             );
 
                             // Si no es el primer intento, esperar antes de reintentar
