@@ -425,7 +425,7 @@ export default class Scraper {
             if (videoData && videoData.type === "vimeo_iframe") {
                 // Extract the Vimeo ID from the iframe URL
                 const vimeoIdMatch = videoData.url.match(/video\/(\d+)/);
-                const vimeoId = vimeoIdMatch ? vimeoId[1] : null;
+                const vimeoId = vimeoIdMatch ? vimeoIdMatch[1] : null; // FIX: Changed from vimeoId[1] to vimeoIdMatch[1]
 
                 if (vimeoId) {
                     // Complete Vimeo URL to use in attempts
@@ -526,8 +526,45 @@ export default class Scraper {
                                 `Error in attempt ${attempt}: ${vimeoError.message}`
                             );
 
-                            // Handle cleanup and retry logic
-                            // ...existing error handling code...
+                            // If it's a file access error, try to clean up temporary files
+                            if (
+                                vimeoError.message.includes("file access") ||
+                                vimeoError.message.includes("access")
+                            ) {
+                                console.log(
+                                    "File access error detected, cleaning up temporary files..."
+                                );
+                                try {
+                                    // Try to delete temporary files that might be locked
+                                    const tempFiles = [
+                                        `${outputPath}.part`,
+                                        `${outputPath}.ytdl`,
+                                        `${outputPath}.temp`,
+                                    ];
+
+                                    for (const tempFile of tempFiles) {
+                                        try {
+                                            await fs.access(tempFile);
+                                            await fs.unlink(tempFile);
+                                            console.log(
+                                                `Deleted temporary file: ${tempFile}`
+                                            );
+                                        } catch (e) {
+                                            // Ignore errors if the file doesn't exist
+                                        }
+                                    }
+                                } catch (cleanupError) {
+                                    console.log(
+                                        `Could not clean up temporary files: ${cleanupError.message}`
+                                    );
+                                }
+                            }
+
+                            if (attempt === maxRetries) {
+                                console.log("Main method retries exhausted");
+                            } else {
+                                continue; // Try again
+                            }
                         }
                     }
                 }
