@@ -290,15 +290,15 @@ export default class Scraper {
         return new Promise((resolve) => setTimeout(resolve, ms));
     }
     async downloadVideo(videoUrl, outputPath) {
-        // Ruta al ejecutable yt-dlp
+        // Path to the yt-dlp executable
         const ytdlpDir = path.join(process.cwd(), "bin");
         const ytdlpPath = path.join(ytdlpDir, "yt-dlp.exe");
 
         try {
-            // Navegar a la página del video para obtener cookies actualizadas
+            // Navigate to the video page to get updated cookies
             await this.page.goto(videoUrl, { waitUntil: "networkidle0" });
 
-            // Esperar a que aparezca el iframe de Vimeo
+            // Wait for the Vimeo iframe to appear
             const iframeExists = await this.page.evaluate(() => {
                 return (
                     document.querySelector(
@@ -307,7 +307,7 @@ export default class Scraper {
                 );
             });
 
-            // Solo esperar si el iframe no existe todavía
+            // Only wait if the iframe doesn't exist yet
             if (!iframeExists) {
                 await this.page.waitForFunction(
                     () => {
@@ -321,9 +321,9 @@ export default class Scraper {
                 );
             }
 
-            // Extraer la URL del iframe de Vimeo
+            // Extract the URL of the Vimeo iframe
             const videoData = await this.page.evaluate(() => {
-                // Buscar iframe de Vimeo
+                // Look for Vimeo iframe
                 const vimeoIframe = document.querySelector(
                     'iframe[src*="player.vimeo.com"]'
                 );
@@ -346,6 +346,19 @@ export default class Scraper {
                 if (vimeoId) {
                     // Complete Vimeo URL to use in attempts
                     const vimeoUrl = `https://player.vimeo.com/video/${vimeoId}`;
+
+                    // Check if file already exists to prevent duplicate downloads
+                    try {
+                        await fs.access(outputPath);
+                        console.log(
+                            `File already exists, skipping download: ${path.basename(
+                                outputPath
+                            )}`
+                        );
+                        return;
+                    } catch (err) {
+                        // File doesn't exist, proceed with download
+                    }
 
                     // Use yt-dlp with specific options for Vimeo - limited to 720p
                     const options = [
@@ -371,20 +384,20 @@ export default class Scraper {
                                 `Attempting to download from Vimeo (attempt ${attempt}/${maxRetries}): ${vimeoUrl}`
                             );
 
-                            // Si no es el primer intento, esperar antes de reintentar
+                            // If not the first attempt, wait before retrying
                             if (attempt > 1) {
                                 console.log(
-                                    `Esperando 2 segundos antes del reintento...`
+                                    `Waiting 2 seconds before retry...`
                                 );
                                 await this.waitForTimeout(2000);
 
-                                // Añadir opción para ignorar archivos temporales existentes en reintentos
+                                // Add option to ignore existing temporary files in retries
                                 options.push("--force-overwrites");
                             }
 
                             await execa(ytdlpPath, [...options, vimeoUrl]);
                             console.log(
-                                `✓ Video descargado: ${path.basename(
+                                `✓ Video downloaded: ${path.basename(
                                     outputPath
                                 )}`
                             );
@@ -426,21 +439,19 @@ export default class Scraper {
                             return;
                         } catch (vimeoError) {
                             console.error(
-                                `Error en intento ${attempt}: ${vimeoError.message}`
+                                `Error in attempt ${attempt}: ${vimeoError.message}`
                             );
 
-                            // Si es un error de acceso al archivo, intentar limpiar archivos temporales
+                            // If it's a file access error, try to clean up temporary files
                             if (
-                                vimeoError.message.includes(
-                                    "acceso al archivo"
-                                ) ||
+                                vimeoError.message.includes("file access") ||
                                 vimeoError.message.includes("access")
                             ) {
                                 console.log(
-                                    "Detectado error de acceso a archivos, limpiando temporales..."
+                                    "File access error detected, cleaning up temporary files..."
                                 );
                                 try {
-                                    // Intentar eliminar archivos temporales que puedan estar bloqueados
+                                    // Try to delete temporary files that might be locked
                                     const tempFiles = [
                                         `${outputPath}.part`,
                                         `${outputPath}.ytdl`,
@@ -452,35 +463,33 @@ export default class Scraper {
                                             await fs.access(tempFile);
                                             await fs.unlink(tempFile);
                                             console.log(
-                                                `Eliminado archivo temporal: ${tempFile}`
+                                                `Deleted temporary file: ${tempFile}`
                                             );
                                         } catch (e) {
-                                            // Ignorar errores si el archivo no existe
+                                            // Ignore errors if the file doesn't exist
                                         }
                                     }
                                 } catch (cleanupError) {
                                     console.log(
-                                        `No se pudieron limpiar archivos temporales: ${cleanupError.message}`
+                                        `Could not clean up temporary files: ${cleanupError.message}`
                                     );
                                 }
                             }
 
                             if (attempt === maxRetries) {
-                                console.log(
-                                    "Agotados los reintentos con el método principal"
-                                );
+                                console.log("Main method retries exhausted");
                             } else {
-                                continue; // Intentar de nuevo
+                                continue; // Try again
                             }
                         }
                     }
                 }
             }
 
-            // Si no se encontró iframe de Vimeo o falló la descarga
-            console.log(`❌ No se pudo descargar el video: ${videoUrl}`);
+            // If Vimeo iframe wasn't found or download failed
+            console.log(`❌ Could not download the video: ${videoUrl}`);
         } catch (error) {
-            console.error(`Error al descargar video: ${error.message}`);
+            console.error(`Error downloading video: ${error.message}`);
         }
     }
     async close() {
