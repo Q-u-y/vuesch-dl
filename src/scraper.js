@@ -363,8 +363,29 @@ export default class Scraper {
 
         // Now download only the unique videos with the best titles
         let downloadCount = 0;
-        for (const videoInfo of processedVimeoIds.values()) {
+        const sortedVideos = Array.from(processedVimeoIds.values()).sort(
+            (a, b) => a.index - b.index
+        );
+
+        for (const videoInfo of sortedVideos) {
             downloadCount++;
+
+            // Create a new output path with the updated sequence number
+            const newVideoNumber = String(downloadCount).padStart(2, "0");
+            const originalBaseName = path.basename(videoInfo.outputPath);
+            const originalNumberRegex = /^\d+-/;
+            const baseNameWithoutNumber = originalBaseName.replace(
+                originalNumberRegex,
+                ""
+            );
+            const newOutputPath = path.join(
+                path.dirname(videoInfo.outputPath),
+                `${newVideoNumber}-${baseNameWithoutNumber}`
+            );
+
+            // Update the output path
+            videoInfo.outputPath = newOutputPath;
+
             console.log(
                 `Downloading (${downloadCount}/${processedVimeoIds.size}): ${videoInfo.title}`
             );
