@@ -255,8 +255,10 @@ export default class Scraper {
 
         // Create a map to track processed Vimeo IDs to avoid duplicates
         const processedVimeoIds = new Map();
+        // Store videos temporarily by id to choose the best title
+        const tempVideosByVimeoId = new Map();
 
-        // First identify all vimeo IDs to prevent duplicates
+        // First collect all videos with their Vimeo IDs
         for (const index of indexesToDownload) {
             const video = courseData.videos[index];
             if (!video) continue; // Skip if video doesn't exist
@@ -281,40 +283,38 @@ export default class Scraper {
                     const vimeoId = vimeoIdMatch ? vimeoIdMatch[1] : null;
 
                     if (vimeoId) {
-                        // Check if this Vimeo ID is already in our map
-                        if (!processedVimeoIds.has(vimeoId)) {
-                            const videoNumber = String(index + 1).padStart(
-                                2,
-                                "0"
-                            );
-                            let videoTitle = video.title.replace(
-                                /[/\\?%*:|"<>]/g,
-                                "-"
-                            );
+                        const videoNumber = String(index + 1).padStart(2, "0");
+                        let videoTitle = video.title.replace(
+                            /[/\\?%*:|"<>]/g,
+                            "-"
+                        );
 
-                            // Ensure the title doesn't start with just "Lesson ##"
-                            if (/^Lesson\s+\d+$/i.test(videoTitle)) {
-                                videoTitle = `${videoTitle} - ${courseData.title}`;
-                            }
-
-                            const outputPath = path.join(
-                                courseDir,
-                                `${videoNumber}-${videoTitle}.mp4`
-                            );
-
-                            // Store the video data with vimeoId as key
-                            processedVimeoIds.set(vimeoId, {
-                                index,
-                                title: video.title,
-                                url: video.url,
-                                vimeoUrl: `https://player.vimeo.com/video/${vimeoId}`,
-                                outputPath,
-                            });
-                        } else {
-                            console.log(
-                                `Duplicate Vimeo ID detected: ${vimeoId} - skipping duplicate video: ${video.title}`
-                            );
+                        // Ensure the title doesn't start with just "Lesson ##"
+                        const isGenericTitle = /^Lesson\s+\d+$/i.test(
+                            videoTitle
+                        );
+                        if (isGenericTitle) {
+                            videoTitle = `${videoTitle} - ${courseData.title}`;
                         }
+
+                        const outputPath = path.join(
+                            courseDir,
+                            `${videoNumber}-${videoTitle}.mp4`
+                        );
+
+                        // Store the video data by vimeoId to compare later
+                        if (!tempVideosByVimeoId.has(vimeoId)) {
+                            tempVideosByVimeoId.set(vimeoId, []);
+                        }
+
+                        tempVideosByVimeoId.get(vimeoId).push({
+                            index,
+                            title: video.title,
+                            url: video.url,
+                            vimeoUrl: `https://player.vimeo.com/video/${vimeoId}`,
+                            outputPath,
+                            isGenericTitle, // Track if this is a generic "Lesson X" title
+                        });
                     }
                 }
             } catch (error) {
@@ -324,7 +324,44 @@ export default class Scraper {
             }
         }
 
-        // Now download only the unique videos
+        // Now process the collected videos and choose the best title for duplicates
+        for (const [vimeoId, videos] of tempVideosByVimeoId.entries()) {
+            if (videos.length > 1) {
+                console.log(
+                    `Found ${videos.length} videos with Vimeo ID ${vimeoId}`
+                );
+
+                // Sort videos to prioritize those with more descriptive titles
+                // Non-generic titles come first, then sort by title length (longer titles often have more info)
+                videos.sort((a, b) => {
+                    // First prioritize non-generic titles
+                    if (a.isGenericTitle && !b.isGenericTitle) return 1;
+                    if (!a.isGenericTitle && b.isGenericTitle) return -1;
+
+                    // If both are generic or both are descriptive, prefer longer titles
+                    return b.title.length - a.title.length;
+                });
+
+                // Choose the best video (first after sorting)
+                const chosenVideo = videos[0];
+                console.log(
+                    `Selected "${chosenVideo.title}" as the best title for this video`
+                );
+
+                // Add to the final map
+                processedVimeoIds.set(vimeoId, chosenVideo);
+
+                // Log the duplicates we're skipping
+                for (let i = 1; i < videos.length; i++) {
+                    console.log(`Skipping duplicate: "${videos[i].title}"`);
+                }
+            } else {
+                // Only one video with this ID, just add it
+                processedVimeoIds.set(vimeoId, videos[0]);
+            }
+        }
+
+        // Now download only the unique videos with the best titles
         let downloadCount = 0;
         for (const videoInfo of processedVimeoIds.values()) {
             downloadCount++;
